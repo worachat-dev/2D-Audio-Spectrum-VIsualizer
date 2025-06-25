@@ -1,5 +1,3 @@
----
-
 # 🎵 Real-Time Audio Visualizer Toolkit
 
 This repository showcases two audio visualizer tools developed by **Worachat W., Ph.D. (2025) :
@@ -7,7 +5,6 @@ This repository showcases two audio visualizer tools developed by **Worachat W.,
 1. 🎧 **Web-Based Audio Visualizer** (HTML5 + React + Tailwind CSS)
 2. 🧪 **Real-Time Spectrogram & Waveform Analyzer** in **Python (Google Colab)
 
----
 
 ## 📁 Contents
 
