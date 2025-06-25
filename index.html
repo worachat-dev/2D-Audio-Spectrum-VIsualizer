@@ -1,0 +1,332 @@
+<script type="text/javascript">
+        var gk_isXlsx = false;
+        var gk_xlsxFileLookup = {};
+        var gk_fileData = {};
+        function filledCell(cell) {
+          return cell !== '' && cell != null;
+        }
+        function loadFileData(filename) {
+        if (gk_isXlsx && gk_xlsxFileLookup[filename]) {
+            try {
+                var workbook = XLSX.read(gk_fileData[filename], { type: 'base64' });
+                var firstSheetName = workbook.SheetNames[0];
+                var worksheet = workbook.Sheets[firstSheetName];
+
+                // Convert sheet to JSON to filter blank rows
+                var jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1, blankrows: false, defval: '' });
+                // Filter out blank rows (rows where all cells are empty, null, or undefined)
+                var filteredData = jsonData.filter(row => row.some(filledCell));
+
+                // Heuristic to find the header row by ignoring rows with fewer filled cells than the next row
+                var headerRowIndex = filteredData.findIndex((row, index) =>
+                  row.filter(filledCell).length >= filteredData[index + 1]?.filter(filledCell).length
+                );
+                // Fallback
+                if (headerRowIndex === -1 || headerRowIndex > 25) {
+                  headerRowIndex = 0;
+                }
+
+                // Convert filtered JSON back to CSV
+                var csv = XLSX.utils.aoa_to_sheet(filteredData.slice(headerRowIndex)); // Create a new sheet from filtered array of arrays
+                csv = XLSX.utils.sheet_to_csv(csv, { header: 1 });
+                return csv;
+            } catch (e) {
+                console.error(e);
+                return "";
+            }
+        }
+        return gk_fileData[filename] || "";
+        }
+        </script><!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="description" content="HTML5 Audio Spectrum Visualizer">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <link rel="shortcut icon" type="image/x-icon" href="favicon.ico">
+    <title>My Audio API Showcase | Audio Visualizer by Worachat W., Ph.D. 2025</title>
+    <script src="https://cdn.jsdelivr.net/npm/react@18.2.0/umd/react.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/react-dom@18.2.0/umd/react-dom.production.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/@babel/standalone@7.20.15/babel.min.js"></script>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gray-900 text-white font-sans min-h-screen flex flex-col">
+    <div id="root" class="flex-grow"></div>
+
+    <script type="text/babel">
+        const Visualizer = {
+            file: null,
+            fileName: null,
+            audioContext: null,
+            source: null,
+            info: "My Audio API Showcase | Audio Visualizer by Worachat W., Ph.D. 2025",
+            infoUpdateId: null,
+            animationId: null,
+            status: 0,
+            forceStop: false,
+            allCapsReachBottom: false,
+
+            init: function() {
+                this._prepareAPI();
+                this._addEventListeners();
+            },
+
+            _prepareAPI: function() {
+                window.AudioContext = window.AudioContext || window.webkitAudioContext || window.mozAudioContext || window.msAudioContext;
+                window.requestAnimationFrame = window.requestAnimationFrame || window.webkitRequestAnimationFrame || window.mozRequestAnimationFrame || window.msRequestAnimationFrame;
+                window.cancelAnimationFrame = window.cancelAnimationFrame || window.webkitCancelAnimationFrame || window.mozCancelAnimationFrame || window.msCancelAnimationFrame;
+                try {
+                    this.audioContext = new AudioContext();
+                } catch (e) {
+                    this._updateInfo('!Your browser does not support AudioContext', false);
+                    console.log(e);
+                }
+            },
+
+            _addEventListeners: function() {
+                const that = this;
+                const audioInput = document.getElementById('uploadedFile');
+                const dropContainer = document.getElementById('canvas');
+
+                audioInput.onchange = function() {
+                    if (that.audioContext === null) return;
+                    if (audioInput.files.length !== 0) {
+                        that.file = audioInput.files[0];
+                        that.fileName = that.file.name;
+                        if (that.status === 1) {
+                            that.forceStop = true;
+                        }
+                        document.getElementById('fileWrapper').classList.remove('opacity-20');
+                        that._updateInfo('Uploading', true);
+                        that._start();
+                    }
+                };
+
+                dropContainer.addEventListener("dragenter", function() {
+                    document.getElementById('fileWrapper').classList.remove('opacity-20');
+                    that._updateInfo('Drop it on the page', true);
+                }, false);
+
+                dropContainer.addEventListener("dragover", function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    e.dataTransfer.dropEffect = 'copy';
+                }, false);
+
+                dropContainer.addEventListener("dragleave", function() {
+                    document.getElementById('fileWrapper').classList.add('opacity-20');
+                    that._updateInfo(that.info, false);
+                }, false);
+
+                dropContainer.addEventListener("drop", function(e) {
+                    e.stopPropagation();
+                    e.preventDefault();
+                    if (that.audioContext === null) return;
+                    document.getElementById('fileWrapper').classList.remove('opacity-20');
+                    that._updateInfo('Uploading', true);
+                    that.file = e.dataTransfer.files[0];
+                    if (that.status === 1) {
+                        that.forceStop = true;
+                    }
+                    that.fileName = that.file.name;
+                    that._start();
+                }, false);
+            },
+
+            _start: function() {
+                const that = this;
+                const file = this.file;
+                const fr = new FileReader();
+                fr.onload = function(e) {
+                    const fileResult = e.target.result;
+                    const audioContext = that.audioContext;
+                    if (audioContext === null) return;
+                    that._updateInfo('Decoding the audio', true);
+                    audioContext.decodeAudioData(fileResult, function(buffer) {
+                        that._updateInfo('Decode successfully, start the visualizer', true);
+                        that._visualize(audioContext, buffer);
+                    }, function(e) {
+                        that._updateInfo('!Fail to decode the file', false);
+                        console.error(e);
+                    });
+                };
+                fr.onerror = function(e) {
+                    that._updateInfo('!Fail to read the file', false);
+                    console.error(e);
+                };
+                this._updateInfo('Starting read the file', true);
+                fr.readAsArrayBuffer(file);
+            },
+
+            _visualize: function(audioContext, buffer) {
+                const audioBufferSourceNode = audioContext.createBufferSource();
+                const analyser = audioContext.createAnalyser();
+                const that = this;
+
+                audioBufferSourceNode.connect(analyser);
+                analyser.connect(audioContext.destination);
+                audioBufferSourceNode.buffer = buffer;
+
+                if (!audioBufferSourceNode.start) {
+                    audioBufferSourceNode.start = audioBufferSourceNode.noteOn;
+                    audioBufferSourceNode.stop = audioBufferSourceNode.noteOff;
+                }
+
+                if (this.animationId !== null) {
+                    cancelAnimationFrame(this.animationId);
+                }
+                if (this.source !== null) {
+                    this.source.stop(0);
+                }
+
+                audioBufferSourceNode.start(0);
+                this.status = 1;
+                this.source = audioBufferSourceNode;
+                audioBufferSourceNode.onended = function() {
+                    that._audioEnd(that);
+                };
+                this._updateInfo('Playing ' + this.fileName, false);
+                this.info = 'Playing ' + this.fileName;
+                document.getElementById('fileWrapper').classList.add('opacity-20');
+                this._drawSpectrum(analyser);
+            },
+
+            _drawSpectrum: function(analyser) {
+                const that = this;
+                const canvas = document.getElementById('canvas');
+                const cwidth = canvas.width;
+                const cheight = canvas.height - 2;
+                const meterWidth = 10;
+                const gap = 2;
+                const capHeight = 2;
+                const capStyle = '#fff';
+                const meterNum = cwidth / (meterWidth + gap);
+                const capYPositionArray = [];
+                const ctx = canvas.getContext('2d');
+                const gradient = ctx.createLinearGradient(0, 0, 0, cheight);
+                gradient.addColorStop(1, '#0f0');
+                gradient.addColorStop(0.5, '#ff0');
+                gradient.addColorStop(0, '#f00');
+
+                const drawMeter = function() {
+                    const array = new Uint8Array(analyser.frequencyBinCount);
+                    analyser.getByteFrequencyData(array);
+                    if (that.status === 0) {
+                        for (let i = array.length - 1; i >= 0; i--) {
+                            array[i] = 0;
+                        }
+                        let allCapsReachBottom = true;
+                        for (let i = capYPositionArray.length - 1; i >= 0; i--) {
+                            allCapsReachBottom = allCapsReachBottom && (capYPositionArray[i] === 0);
+                        }
+                        if (allCapsReachBottom) {
+                            cancelAnimationFrame(that.animationId);
+                            return;
+                        }
+                    }
+
+                    const step = Math.round(array.length / meterNum);
+                    ctx.clearRect(0, 0, cwidth, cheight);
+                    for (let i = 0; i < meterNum; i++) {
+                        const value = array[i * step];
+                        if (capYPositionArray.length < Math.round(meterNum)) {
+                            capYPositionArray.push(value);
+                        }
+                        ctx.fillStyle = capStyle;
+                        if (value < capYPositionArray[i]) {
+                            ctx.fillRect(i * (meterWidth + gap), cheight - (--capYPositionArray[i]), meterWidth, capHeight);
+                        } else {
+                            ctx.fillRect(i * (meterWidth + gap), cheight - value, meterWidth, capHeight);
+                            capYPositionArray[i] = value;
+                        }
+                        ctx.fillStyle = gradient;
+                        ctx.fillRect(i * (meterWidth + gap), cheight - value + capHeight, meterWidth, cheight);
+                    }
+                    that.animationId = requestAnimationFrame(drawMeter);
+                };
+                this.animationId = requestAnimationFrame(drawMeter);
+            },
+
+            _audioEnd: function(instance) {
+                if (this.forceStop) {
+                    this.forceStop = false;
+                    this.status = 1;
+                    return;
+                }
+                this.status = 0;
+                const text = 'HTML5 Audio API Showcase | An Audio Visualizer';
+                document.getElementById('fileWrapper').classList.remove('opacity-20');
+                document.getElementById('info').innerHTML = text;
+                instance.info = text;
+                document.getElementById('uploadedFile').value = '';
+            },
+
+            _updateInfo: function(text, processing) {
+                const infoBar = document.getElementById('info');
+                let dots = '...';
+                let i = 0;
+                const that = this;
+                infoBar.innerHTML = text + dots.substring(0, i++);
+                if (this.infoUpdateId !== null) {
+                    clearTimeout(this.infoUpdateId);
+                }
+                if (processing) {
+                    const animateDot = function() {
+                        if (i > 3) i = 0;
+                        infoBar.innerHTML = text + dots.substring(0, i++);
+                        that.infoUpdateId = setTimeout(animateDot, 250);
+                    };
+                    this.infoUpdateId = setTimeout(animateDot, 250);
+                }
+            }
+        };
+
+        function App() {
+            const [info, setInfo] = React.useState(Visualizer.info);
+
+            React.useEffect(() => {
+                Visualizer.init();
+                const originalUpdateInfo = Visualizer._updateInfo;
+                Visualizer._updateInfo = function(text, processing) {
+                    setInfo(text);
+                    originalUpdateInfo.call(Visualizer, text, processing);
+                };
+                return () => {
+                    Visualizer._updateInfo = originalUpdateInfo;
+                };
+            }, []);
+
+            return (
+                <div className="container mx-auto px-4 py-8 flex flex-col items-center justify-center flex-grow">
+                    <h1 className="text-3xl font-bold mb-4 text-center">Audio Visualizer</h1>
+                    <div id="fileWrapper" className="opacity-20 transition-opacity duration-500 hover:opacity-100 bg-gray-800 p-6 rounded-lg shadow-lg mb-6 w-full max-w-md">
+                        <div id="info" className="text-center text-lg mb-4">{info}</div>
+                        <label htmlFor="uploadedFile" className="block text-center mb-2">Drag & drop or select a file to play:</label>
+                        <input
+                            type="file"
+                            id="uploadedFile"
+                            accept="audio/*"
+                            className="block w-full text-sm text-gray-500 file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-sm file:font-semibold file:bg-blue-600 file:text-white hover:file:bg-blue-700"
+                        />
+                    </div>
+                    <div id="visualizer_wrapper" className="w-full max-w-4xl">
+                        <canvas id="canvas" width="800" height="350" className="w-full rounded-lg shadow-lg"></canvas>
+                    </div>
+                    <footer className="mt-8 text-gray-400 text-sm">
+                        <small>
+                            Star me on{' '}
+                            <a href="https://github.com/worachat-dev" target="_blank" className="text-blue-400 hover:underline">
+                                My GitHub
+                            </a>
+                        </small>
+                    </footer>
+                </div>
+            );
+        }
+
+        const root = ReactDOM.createRoot(document.getElementById('root'));
+        root.render(<App />);
+    </script>
+</body>
+</html>
+
