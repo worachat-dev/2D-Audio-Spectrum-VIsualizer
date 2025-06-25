@@ -79,13 +79,3 @@ NutriCious Co., Ltd., Bangkok, Thailand
 
 MIT License – feel free to use, modify, and share!
 
-```
-
----
-
-Let me know if you'd like:
-- Embedded screenshots or demo GIFs
-- A version of this as an actual markdown file download
-- Split this into separate README files (one for Python, one for HTML app)
-```
-
